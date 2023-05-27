@@ -1,7 +1,9 @@
+import { Keymap } from "obsidian";
+
 class UniqueStrings {
 	private usedStrings: Set<string> = new Set();
 	private index: number = 0;
-	private characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	private characters = "QWERTASDFGZXCVB";
 
 	generateUniqueString(): string {
 		let result = "";
@@ -10,7 +12,7 @@ class UniqueStrings {
 			this.index++;
 			let currentIndex = this.index;
 			result = "";
-			for (let i = 0; i < 3; i++) {
+			for (let i = 0; i < 2; i++) {
 				const charIndex = currentIndex % this.characters.length;
 				result += this.characters.charAt(charIndex);
 				currentIndex = Math.floor(currentIndex / this.characters.length);
@@ -36,113 +38,143 @@ export default class ElementMonitor {
 	}
 
 	private createOverlay(): HTMLElement {
-		const overlay = document.createElement('div');
-		overlay.style.position = 'absolute';
-		overlay.style.top = '0';
-		overlay.style.left = '0';
-		overlay.style.width = '100%';
-		overlay.style.height = '100%';
-		overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-		overlay.style.zIndex = '99999';
-		overlay.style.pointerEvents = 'none';
+		const overlay = document.body.createDiv({
+			cls: 'surfing-key-overlay',
+		});
 
-		const inputDisplay = document.createElement('div');
-		inputDisplay.id = 'inputDisplay';
-		inputDisplay.style.position = 'absolute';
-		inputDisplay.style.bottom = '0';
-		inputDisplay.style.left = '50%';
-		inputDisplay.style.transform = 'translateX(-50%)';
-		inputDisplay.style.color = 'white';
-		inputDisplay.style.fontSize = '24px';
-		inputDisplay.style.zIndex = '100001';
-		overlay.appendChild(inputDisplay);
+		overlay.createDiv({
+			cls: 'inputDisplay',
+			attr: {
+				id: 'inputDisplay',
+			}
+		});
 		return overlay;
 	}
 
 	attachStringsToElements(): void {
-		const queue: Element[] = [this.doc.documentElement];
-		while (queue.length > 0) {
+		const processQueue = (queue: HTMLElement[]) => {
+			if (!queue.length) return;
 			const element = queue.shift();
 			if (!element) {
-				continue;
+				processQueue(queue);
+				return;
 			}
-		
-			// Add all children to the queue.
-			queue.push(...Array.from(element.children));
-	
-			// Check if any of the direct children is SVG or the element itself has text content.
-			const hasSvgOrTextContentChild = Array.from(element.children).some(
-				child => child instanceof SVGSVGElement
-			) || Array.from(element.childNodes).some(
-				childNode => childNode.nodeType === Node.TEXT_NODE && childNode.textContent && childNode.textContent.trim() !== ""
-			);
-		
+
+			const pushChildren = (child: HTMLElement) => {
+				queue.push(child);
+				if (child instanceof SVGSVGElement) return true;
+				return !!(child.nodeType === Node.TEXT_NODE && child.textContent?.trim() && child.textContent !== "/");
+			};
+
+			const hasSvgOrTextContentChild = Array.from(element.childNodes).some(pushChildren);
 			if (hasSvgOrTextContentChild) {
-				const uniqueString = this.uniqueStrings.generateUniqueString();
-				this.elementsWithUniqueStrings.set(uniqueString, element);
-		
 				const elementPosition = element.getBoundingClientRect();
-		
-				const stringElement = document.createElement('span');
-				stringElement.textContent = uniqueString;
-				stringElement.style.position = 'absolute';
-				stringElement.style.top = `${elementPosition.top}px`;
-				stringElement.style.left = `${elementPosition.left}px`;
-				stringElement.style.zIndex = '100000';
-				stringElement.style.pointerEvents = 'none';
-		
-				this.overlay.appendChild(stringElement);
+				if (elementPosition.top !== 0 || elementPosition.left !== 0) {
+					const uniqueString = this.uniqueStrings.generateUniqueString();
+					this.elementsWithUniqueStrings.set(uniqueString, element);
+
+					const stringElement = this.overlay.createEl('span', {
+						cls: 'surfing-key-string',
+					});
+					stringElement.textContent = uniqueString;
+
+					const midPointX = elementPosition.left + elementPosition.width / 2;
+					const midPointY = elementPosition.top + elementPosition.height / 2;
+
+					const stringElementRect = stringElement.getBoundingClientRect();
+					const overlayRect = this.overlay.getBoundingClientRect();
+					const stringWidth = stringElementRect.width;
+					const stringHeight = stringElementRect.height;
+
+					const rightPosition = midPointX + stringWidth / 2;
+					const bottomPosition = midPointY + stringHeight / 2;
+
+					if (rightPosition > overlayRect.right) {
+						stringElement.style.left = `${midPointX - stringWidth}px`;
+					} else {
+						stringElement.style.left = `${midPointX}px`;
+					}
+
+					if (bottomPosition > overlayRect.bottom) {
+						stringElement.style.top = `${midPointY - stringHeight}px`;
+					} else if (midPointY + stringHeight / 2 > overlayRect.bottom) {
+						stringElement.style.top = `${midPointY - stringHeight}px`;
+					} else {
+						stringElement.style.top = `${midPointY - 2}px`;
+					}
+				}
 			}
-		}
+			processQueue(queue);
+		};
+		processQueue([this.doc.documentElement]);
 		this.doc.body.appendChild(this.overlay);
 	}
+
+
 
 	monitorUserInput(): void {
 		const inputQueue: string[] = [];
 		this.keydownHandler = (e) => {
 			e.stopPropagation();
 			e.preventDefault();
-	
+
 			if (e.key === 'Escape') {
 				this.removeOverlay();
 				return;
 			}
+
+			if (Keymap.isModifier(e, 'Mod') || Keymap.isModifier(e, 'Shift') || Keymap.isModifier(e, 'Alt')) {
+				return;
+			}
+
+			if(!(/^[qwertasdfgzxcvbQWERTASDFGZXCVB]$/i.test(e.key))) {
+				if(e.key === 'Backspace' || e.key === 'Delete') {
+					inputQueue.pop();
+					// 当删除输入的字符串后，重新显示所有隐藏的元素
+					this.overlay.querySelectorAll('span').forEach(span => span.show());
+				}
+				return;
+			}
+
+			const input = e.key.toUpperCase();
+			if (inputQueue.length >= 2) {
+				inputQueue.shift();
+			}
+			inputQueue.push(input);
 
 			const inputDisplay = this.overlay.querySelector('#inputDisplay');
 			if (inputDisplay) {
 				inputDisplay.textContent = inputQueue.join('');
 			}
 
+			const inputString = inputQueue.join('');
+
 			this.overlay.querySelectorAll('span').forEach(span => {
 				if (span.textContent && span.textContent.startsWith(inputQueue.join(''))) {
 					span.style.backgroundColor = 'yellow';
+					span.style.color = 'black';
 				} else {
 					span.style.backgroundColor = '';
+					// 当输入的字符串没有命中时，隐藏相关的元素
+					span.hide();
 				}
 			});
-	
-			const input = e.key.toUpperCase();
-			if (inputQueue.length >= 3) {
-				inputQueue.shift();
-			}
-			inputQueue.push(input);
-	
-			const inputString = inputQueue.join('');
+
 			if (this.elementsWithUniqueStrings.has(inputString)) {
 				let elementToClick = this.elementsWithUniqueStrings.get(inputString);
-	
-				// If the element is an SVG, use its parent for the click event
+
 				if (elementToClick instanceof SVGSVGElement && elementToClick.parentElement) {
 					elementToClick = elementToClick.parentElement;
 				}
-				
-				elementToClick?.dispatchEvent(new Event('click'));
+
 				this.removeOverlay();
+				elementToClick?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 			}
 		};
-	
+
 		window.addEventListener('keydown', this.keydownHandler);
-	}	
+	}
+
 
 	init(): void {
 		this.attachStringsToElements();
@@ -162,3 +194,4 @@ export default class ElementMonitor {
 		}
 	}
 }
+
