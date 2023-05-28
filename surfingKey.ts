@@ -1,5 +1,5 @@
 import { Keymap } from "obsidian";
-import SurfingKeyPlugin, {SurfingKeyModal} from "./main";
+import SurfingKeyPlugin, {SurfingKeyModal} from "./surfingKeyIndex";
 
 class UniqueStrings {
 	private usedStrings: Set<string> = new Set();
@@ -88,6 +88,11 @@ export default class ElementMonitor {
 				return;
 			}
 
+			if(element.classList?.contains('node-insert-event')) {
+				processQueue(queue);
+				return;
+			}
+
 			const pushChildren = (child: HTMLElement) => {
 				// Get computed style of the child
 				if (child instanceof Element) {
@@ -98,7 +103,7 @@ export default class ElementMonitor {
 					}
 				}
 				queue.push(child);
-				if (child instanceof SVGSVGElement && !child.classList?.contains('canvas-background') && !child.classList?.contains('canvas-edges')) return true;
+				if (child instanceof SVGSVGElement && !child.classList?.contains('canvas-background') && !child.classList?.contains('canvas-edges') && !child.classList?.contains('lucide-align-left')) return true;
 				else if (child.classList?.contains('canvas-node-container')) return true;
 				return !!(child.nodeType === Node.TEXT_NODE && child.textContent?.trim() && child.textContent !== "/")
 			};
