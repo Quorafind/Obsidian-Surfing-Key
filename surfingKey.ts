@@ -3,35 +3,67 @@ import SurfingKeyPlugin, {SurfingKeyModal} from "./surfingKeyIndex";
 
 class UniqueStrings {
 	private usedStrings: Set<string> = new Set();
-	private index: number = 0;
-	private secondIndex: number = 0;
+	private twoCharIndex: number = 0;
+	private threeCharIndex: number = 0;
+	private threeCharFirstIndex: number = 0;
 	private characters = "QWERTASDFGZXCVB";
+
+	public usedChars: Set<string> = new Set();
+
+
+	private findUnusedChar(): string {
+		let result = "";
+		let usedCharsArray = Array.from(this.usedChars);
+		for (let i = 0; i < this.characters.length; i++) {
+			if (!usedCharsArray.includes(this.characters.charAt(i))) {
+				result = this.characters.charAt(i);
+				break;
+			}
+		}
+		return result;
+	}
 
 	generateUniqueString(): string {
 		let result = "";
-		do {
-			const firstChar = this.characters.charAt(this.index);
-			const secondChar = this.characters.charAt(this.secondIndex);
-			result = firstChar + secondChar;
-			this.advanceIndices();
-		} while (this.usedStrings.has(result));
+
+		if (this.usedStrings.size < 210) {
+			if (this.twoCharIndex >= this.characters.length * this.characters.length - 15) {
+				throw new Error("All possible two character strings have been generated!");
+			}
+
+			do {
+				let firstChar = this.characters.charAt(Math.floor(this.twoCharIndex / this.characters.length));
+				this.usedChars.add(firstChar);
+				let secondChar = this.characters.charAt(this.twoCharIndex % this.characters.length);
+				result = firstChar + secondChar;
+				this.twoCharIndex++;
+			} while (this.usedStrings.has(result));
+		} else {
+			if (this.usedStrings.size >= 210 + 225) {
+				throw new Error("All possible strings have been generated!");
+			}
+			if (this.threeCharFirstIndex >= 225) {
+				throw new Error("All possible three character strings have been generated!");
+			}
+			do {
+				let firstChar = this.findUnusedChar();
+				let secondChar = this.characters.charAt(Math.floor(this.threeCharIndex / this.characters.length));
+				let thirdChar = this.characters.charAt(this.threeCharIndex % this.characters.length);
+
+				result = firstChar + secondChar + thirdChar;
+
+				this.threeCharIndex++;
+				if (this.threeCharIndex >= this.characters.length * this.characters.length) {
+					this.threeCharIndex = 0;
+					this.threeCharFirstIndex++;
+				}
+			} while (this.usedStrings.has(result));
+		}
 
 		this.usedStrings.add(result);
 		return result;
 	}
-
-	private advanceIndices(): void {
-		this.secondIndex++;
-		if (this.secondIndex >= this.characters.length) {
-			this.secondIndex = 0;
-			this.index++;
-			if (this.index >= this.characters.length) {
-				this.index = 0; // We've exhausted all possible combinations.
-			}
-		}
-	}
 }
-
 
 export default class ElementMonitor {
 	private plugin: SurfingKeyPlugin;
@@ -80,15 +112,17 @@ export default class ElementMonitor {
 	}
 
 	attachStringsToElements(): void {
+
+		const rules = [
+			(child: HTMLElement) => child instanceof SVGSVGElement && !child.classList?.contains('canvas-background') && !child.classList?.contains('canvas-edges') ? true : null,
+			(child: HTMLElement) => child.classList?.contains('canvas-node-label') ? false : null,
+			(child: HTMLElement) => child.classList?.contains('canvas-node-container') ? true : null,
+			// Add more rules as needed...
+		];
 		const processQueue = (queue: HTMLElement[]) => {
 			if (!queue.length) return;
 			const element = queue.shift();
 			if (!element) {
-				processQueue(queue);
-				return;
-			}
-
-			if(element.classList?.contains('node-insert-event')) {
 				processQueue(queue);
 				return;
 			}
@@ -102,14 +136,22 @@ export default class ElementMonitor {
 						return false;
 					}
 				}
+
 				queue.push(child);
-				if (child instanceof SVGSVGElement && !child.classList?.contains('canvas-background') && !child.classList?.contains('canvas-edges') && !child.classList?.contains('lucide-align-left')) return true;
-				else if (child.classList?.contains('canvas-node-container')) return true;
-				return !!(child.nodeType === Node.TEXT_NODE && child.textContent?.trim() && child.textContent !== "/")
+
+				for (const rule of rules) {
+					const result = rule(child);
+					if (result !== null) {
+						return result;
+					}
+				}
+
+				// Default return value if no rules matched
+				return !!(child.nodeType === Node.TEXT_NODE && child.textContent?.trim() && child.textContent !== "/");
 			};
 
 
-			const hasSvgOrTextContentChild = Array.from(element.childNodes).some(pushChildren);
+			const hasSvgOrTextContentChild = (Array.from(element.childNodes).some(pushChildren) || element.classList?.contains('canvas-color-picker-item')) && !element?.classList?.contains('canvas-icon-placeholder');
 			if (hasSvgOrTextContentChild) {
 				const style = window.getComputedStyle(element);
 				if (style.display !== "none" && this.isElementInViewport(element)) {
@@ -120,6 +162,9 @@ export default class ElementMonitor {
 
 						const stringElement = this.overlay.createEl('span', {
 							cls: 'surfing-key-string',
+							attr: {
+								id: uniqueString,
+							}
 						});
 						stringElement.textContent = uniqueString;
 
@@ -189,13 +234,21 @@ export default class ElementMonitor {
 					if (inputDisplay) {
 						inputDisplay.textContent = inputQueue.join('');
 					}
-					this.overlay.querySelectorAll('span').forEach(span => span.show());
+					// this.overlay.querySelectorAll('.surfing-key-string').forEach((span: HTMLSpanElement) => span.show());
+					// Update here
+					for (const [uniqueString, _] of this.elementsWithUniqueStrings.entries()) {
+						const stringElement = document.getElementById(uniqueString);
+						stringElement?.show();
+					}
 				}
 				return;
 			}
 
 			const input = e.key.toUpperCase();
-			if (inputQueue.length >= 2) {
+
+			if (inputQueue.length >= 2 && this.uniqueStrings.usedChars.has(inputQueue.join('')[0])) {
+				inputQueue.shift();
+			} else if (inputQueue.length >= 3) {
 				inputQueue.shift();
 			}
 			inputQueue.push(input);
@@ -207,15 +260,17 @@ export default class ElementMonitor {
 
 			const inputString = inputQueue.join('');
 
-			this.overlay.querySelectorAll('span').forEach(span => {
-				if (span.textContent && span.textContent.startsWith(inputQueue.join(''))) {
-					span.style.backgroundColor = 'yellow';
-					span.style.color = 'black';
+			// this.overlay.querySelectorAll('.surfing-key-string').forEach((span: HTMLSpanElement) => {
+			// Update here
+			for (const [uniqueString, _] of this.elementsWithUniqueStrings.entries()) {
+				const stringElement = document.getElementById(uniqueString);
+				if (stringElement && stringElement.textContent?.startsWith(inputString)) {
+					stringElement.style.backgroundColor = 'yellow';
+					stringElement.style.color = 'black';
 				} else {
-					span.style.backgroundColor = '';
-					span.hide();
+					stringElement?.hide();
 				}
-			});
+			}
 
 			if (this.elementsWithUniqueStrings.has(inputString)) {
 				let elementToClick = this.elementsWithUniqueStrings.get(inputString);
@@ -238,9 +293,6 @@ export default class ElementMonitor {
 
 		window.addEventListener('keydown', this.keydownHandler, true);
 	}
-
-
-
 
 	init(): void {
 		this.attachStringsToElements();
