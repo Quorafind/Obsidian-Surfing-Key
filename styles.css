@@ -40,7 +40,7 @@ If your plugin does not need CSS, delete this file.
 	bottom: 0;
 	left: 50%;
 	transform: translateX(-50%);
-	color: white;
-	font-size: 24px;
+	color: var(--color-base-90);
+	font-size: var(--size-4-8);
 	z-index: 100001;
 }
