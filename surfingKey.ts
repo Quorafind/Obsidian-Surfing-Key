@@ -69,7 +69,7 @@ export default class ElementMonitor {
 	private plugin: SurfingKeyPlugin;
 	private modal: SurfingKeyModal;
 
-	private doc: Document;
+	private doc: Document | HTMLElement;
 	private overlay: HTMLElement;
 	private uniqueStrings: UniqueStrings;
 	private elementsWithUniqueStrings: Map<string, Element> = new Map();
@@ -77,12 +77,15 @@ export default class ElementMonitor {
 
 	removed: boolean = false;
 
+	private cb: ()=> void;
 
-	constructor(doc: Document, plugin: SurfingKeyPlugin) {
+
+	constructor(doc: Document | HTMLElement, cb: ()=> void, plugin: SurfingKeyPlugin) {
 		this.doc = doc;
 		this.plugin = plugin;
 		this.uniqueStrings = new UniqueStrings();
 		this.overlay = this.createOverlay();
+		this.cb = cb;
 	}
 
 	private createOverlay(): HTMLElement {
@@ -115,6 +118,7 @@ export default class ElementMonitor {
 
 		const rules = [
 			(child: HTMLElement) => child instanceof SVGSVGElement && !child.classList?.contains('canvas-background') && !child.classList?.contains('canvas-edges') ? true : null,
+			(child: HTMLElement) => child instanceof HTMLInputElement && child.type === "checkbox" ? true : null,
 			(child: HTMLElement) => child.classList?.contains('canvas-node-label') ? false : null,
 			(child: HTMLElement) => child.classList?.contains('canvas-node-container') ? true : null,
 			// Add more rules as needed...
@@ -151,7 +155,7 @@ export default class ElementMonitor {
 			};
 
 
-			const hasSvgOrTextContentChild = (Array.from(element.childNodes).some(pushChildren) || element.classList?.contains('canvas-color-picker-item')) && !element?.classList?.contains('canvas-icon-placeholder');
+			const hasSvgOrTextContentChild = (Array.from(element.childNodes).some(pushChildren) || element.classList?.contains('canvas-color-picker-item') || (element instanceof HTMLInputElement && element.type === "search") || (element instanceof HTMLSelectElement)) && !element?.classList?.contains('canvas-icon-placeholder');
 			if (hasSvgOrTextContentChild) {
 				const style = window.getComputedStyle(element);
 				if (style.display !== "none" && this.isElementInViewport(element)) {
@@ -197,7 +201,7 @@ export default class ElementMonitor {
 			}
 			processQueue(queue);
 		};
-		processQueue([this.doc.documentElement]);
+		processQueue([this.doc instanceof Document ? this.doc.documentElement : this.doc]);
 	}
 
 
@@ -286,6 +290,14 @@ export default class ElementMonitor {
 					elementToClick?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: elementToClick.getBoundingClientRect().left + elementToClick.clientWidth / 2, clientY: elementToClick.getBoundingClientRect().top + elementToClick.clientHeight / 2}));
 				} else {
 					elementToClick?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+					if(elementToClick instanceof HTMLInputElement) {
+						if(document && document.activeElement !== elementToClick) {
+							(document.activeElement as HTMLElement)?.blur();
+						}
+						setTimeout(()=>{
+							(elementToClick as HTMLInputElement)?.focus();
+						},0)
+					}
 				}
 				isTickPressed = false;  // 重置状态
 			}
@@ -302,6 +314,7 @@ export default class ElementMonitor {
 	removeOverlay(): void {
 		if (this.modal && !this.removed) {
 			this.removed = true; // 设置状态为已移除，防止递归调用
+			this.cb();
 			setTimeout(()=>{
 				this.modal.close();
 			}, 0);

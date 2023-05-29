@@ -1,16 +1,56 @@
-import {App, Modal, Plugin } from 'obsidian';
+import {App, Keymap, Modal, Plugin} from 'obsidian';
 import ElementMonitor from "./surfingKey";
 
 export default class SurfingKeyPlugin extends Plugin {
-	documentMonitor: ElementMonitor;
+	documentMonitor: ElementMonitor | null = null;
+	private lastKeypressTime = 0;
+	private keyComboPressed = false;
 
 	async onload() {
 		this.addCommand({
 			id: 'surfing-obsidian',
 			name: 'Surfing Obsidian',
 			callback: () => {
-				this.documentMonitor = new ElementMonitor(document, this);
-				this.documentMonitor.init();
+				if(!this.documentMonitor) {
+					this.documentMonitor = new ElementMonitor(activeDocument, ()=>{
+						this.documentMonitor = null;
+					}, this);
+					this.documentMonitor.init();
+				}
+			}
+		});
+
+		this.registerDomEvent(window, 'keydown', (event: KeyboardEvent) => {
+			let focusedElement: Document | HTMLElement = activeDocument;
+			if(!activeDocument.querySelector('.modal-container')) {
+				return;
+			} else {
+				focusedElement = activeDocument.querySelector('.modal-container') as HTMLElement;
+			}
+			if (Keymap.isModEvent(event) && event.key === 'g') {
+				const currentTime = new Date().getTime();
+
+				// Check if the last keypress was less than 1000ms ago
+				if (currentTime - this.lastKeypressTime <= 1000) {
+					if (!this.keyComboPressed) {
+						if(!this.documentMonitor) {
+							this.documentMonitor = new ElementMonitor(focusedElement,()=>{
+								this.documentMonitor = null;
+							}, this);
+							this.documentMonitor.init();
+						}
+						this.keyComboPressed = true;
+					}
+				} else {
+					this.keyComboPressed = false;
+				}
+
+				this.lastKeypressTime = currentTime;
+
+				// Set keyComboPressed back to false after 1 second, regardless of its current value
+				setTimeout(()=>{
+					this.keyComboPressed = false;
+				}, 1000);
 			}
 		});
 	}
