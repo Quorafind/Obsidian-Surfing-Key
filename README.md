@@ -12,7 +12,7 @@ Now you can able to fully control Obsidian with keyboard.
   - Press String to select the element and click the element.
   - Press `Esc` to close the Surfing Key.
   - Press `\`` to first to trigger right click, then press string to select the element and click the element.
-- Press `Ctrl+G | Cmd+G` to trigger surfing key when a modal is opening.
+- Double-Press `Ctrl+G | Cmd+G` to trigger surfing key when a modal is opening.
 
 ## Why
 
